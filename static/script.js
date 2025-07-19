@@ -20,7 +20,7 @@ async function calculate() {
             return;
         }
 
-        let text = `Điểm ${data.block} ${data.score} nằm trên ${data.count_above}/${data.total} thí sinh.\n`;
+        let text = `Điểm ${data.block} ${data.score} xếp hạng ${data.count_above}/${data.total} thí sinh ${data.block}.\n`;
         text += `Tức top ${data.percent}% của khối ${data.block}.\n\n`;
         text += "Điểm tương ứng ở các khối khác:\n";
         for (const [k, v] of Object.entries(data.equivalents)) {
