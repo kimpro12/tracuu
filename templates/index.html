@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8"/>
+    <title>So sánh điểm thi</title>
+    <style>
+        body{font-family:Arial,Helvetica,sans-serif;margin:30px}
+        label{display:block;margin:8px 0}
+        select,input[type=number]{padding:6px;width:200px}
+        button{padding:8px 14px}
+        pre{background:#f4f4f4;padding:10px;border-radius:4px}
+
+        /* Thêm style cho footer */
+        footer{
+            position:fixed;
+            left:10px;
+            bottom:10px;
+            font-size:11px;
+            color:#666;
+        }
+    </style>
+</head>
+<body>
+    <h2>Nhập điểm và chọn khối</h2>
+
+    <label>Khối:
+        <select id="block">
+            <option value="A00">A00 (Toán, Lý, Hoá)</option>
+            <option value="A01">A01 (Toán, Lý, Anh)</option>
+            <option value="B00">B00 (Toán, Hoá, Sinh)</option>
+            <option value="B08">B08 (Toán, Sinh, Anh)</option>
+            <option value="C00">C00 (Văn, Sử, Địa)</option>
+            <option value="D01">D01 (Toán, Văn, Anh)</option>
+            <option value="D07">D07 (Toán, Hoá, Anh)</option>
+        </select>
+    </label>
+
+    <label>Điểm của bạn:
+        <input type="number" id="score" step="0.01" min="0" max="30"/>
+    </label>
+
+    <button onclick="calculate()">Xem kết quả</button>
+
+    <pre id="result"></pre>
+
+    <!-- Footer mới -->
+    <footer>Copyright by Kim Bùi</footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
