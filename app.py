@@ -1,109 +1,101 @@
-from flask import Flask, request, jsonify, render_template
+# app.py
 import os
-from typing import Dict, List
+import bisect
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 
-# --- Hàm đọc file (giữ nguyên logic cũ) ---
-def load_scores() -> Dict[str, List[str]]:
-    files = ['toan', 'van', 'ly', 'hoa', 'sinh', 'su', 'dia', 'anh', 'mamon']
-    data = {}
-    for f in files:
-        with open(f"{f}.txt", encoding='utf-8') as fp:
-            data[f] = [line.strip() for line in fp]
+# Mapping khối -> chỉ số cột điểm quy đổi
+COL_MAP = {
+    'A00': 4,
+    'A01': 5,
+    'B00': 6,
+    'B08': 7,
+    'C00': 8,
+    'D01': 9,
+    'D07': 10
+}
+
+# -----------------------------
+# Đọc file khối
+# -----------------------------
+def load_block(block_name: str):
+    path = os.path.join('data', f'{block_name}.txt')
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f'Không tìm thấy {path}')
+    data = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            row = parts[0].split('\t') if '\t' in parts[0] else parts
+            # loại bỏ dấu % rồi ép float
+            row = [float(x.rstrip('%')) for x in row]
+            data.append(row)
     return data
 
-def calculate_blocks(data: Dict[str, List[str]]) -> Dict[str, List[float]]:
-    toan  = data['toan']
-    van   = data['van']
-    ly    = data['ly']
-    hoa   = data['hoa']
-    sinh  = data['sinh']
-    su    = data['su']
-    dia   = data['dia']
-    anh   = data['anh']
-    mamon = data['mamon']
+# Cache 7 khối khi khởi động server
+pool = {k: load_block(k) for k in COL_MAP}
 
-    A00, A01, B00, B08, C00, D01, D07 = [], [], [], [], [], [], []
-
-    for i in range(len(toan)):
-        if toan[i] and ly[i] and hoa[i]:
-            A00.append(float(toan[i]) + float(ly[i]) + float(hoa[i]))
-
-        if toan[i] and ly[i] and anh[i] and mamon[i] == "N1":
-            A01.append(float(toan[i]) + float(ly[i]) + float(anh[i]))
-
-        if toan[i] and hoa[i] and sinh[i]:
-            B00.append(float(toan[i]) + float(hoa[i]) + float(sinh[i]))
-
-        if toan[i] and sinh[i] and anh[i] and mamon[i] == "N1":
-            B08.append(float(toan[i]) + float(sinh[i]) + float(anh[i]))
-
-        if van[i] and su[i] and dia[i]:
-            C00.append(float(van[i]) + float(su[i]) + float(dia[i]))
-
-        if toan[i] and van[i] and anh[i] and mamon[i] == "N1":
-            D01.append(float(toan[i]) + float(van[i]) + float(anh[i]))
-
-        if toan[i] and hoa[i] and anh[i] and mamon[i] == "N1":
-            D07.append(float(toan[i]) + float(hoa[i]) + float(anh[i]))
-
-    # Giảm dần
-    for arr in [A00, A01, B00, B08, C00, D01, D07]:
-        arr.sort(reverse=True)
-
-    return {
-        'A00': A00,
-        'A01': A01,
-        'B00': B00,
-        'B08': B08,
-        'C00': C00,
-        'D01': D01,
-        'D07': D07
-    }
-
-# --- Flask routes ---
+# -----------------------------
+# Route giao diện
+# -----------------------------
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# -----------------------------
+# API
+# -----------------------------
 @app.route('/api/rank', methods=['POST'])
 def rank():
-    data = request.get_json()
-    khoi_chon = data['block'].upper()
-    diem_cua_ban = float(data['score'])
+    payload = request.get_json(silent=True) or {}
+    block = str(payload.get('block', '')).upper()
+    score = payload.get('score')
 
-    pool = calculate_blocks(load_scores())
+    # validate
+    if block not in pool:
+        return jsonify({'error': 'Khối không hợp lệ'}), 400
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Điểm không hợp lệ'}), 400
 
-    if khoi_chon not in pool:
-        return jsonify({'error': 'Khối không hợp lệ!'}), 400
+    data = pool[block]
+    scores = [row[0] for row in data]
 
-    lst = pool[khoi_chon]
-    n = len(lst)
-    if n == 0:
-        return jsonify({'error': 'Khối này chưa có dữ liệu.'}), 400
+    # tìm dòng >= điểm nhập
+    pos = bisect.bisect_left(scores, score)
+    if pos == len(scores):
+        pos = len(scores) - 1
+    row = data[pos]
 
-    so_ngon_hon = sum(1 for d in lst if d >= diem_cua_ban)
-    phan_tram = so_ngon_hon / n
+    count_above = int(row[1])
+    total = int(row[2])
+    percent = round(count_above / total * 100, 2)
 
-    # Quy ra các khối khác
+    # điểm quy đổi
     equivalents = {}
-    for ten, arr in pool.items():
-        if not arr:
-            equivalents[ten] = None
-        else:
-            idx = max(0, min(int(round(phan_tram * len(arr))) - 1, len(arr) - 1))
-            equivalents[ten] = round(arr[idx], 2)
+    for k in COL_MAP:
+        try:
+            val = row[COL_MAP[k]]
+            equivalents[k] = round(val, 2)
+        except IndexError:
+            equivalents[k] = None
 
     return jsonify({
-        'block': khoi_chon,
-        'score': diem_cua_ban,
-        'count_above': so_ngon_hon,
-        'total': n,
-        'percent': round(phan_tram * 100, 2),
+        'block': block,
+        'score': score,
+        'count_above': count_above,
+        'total': total,
+        'percent': percent,
         'equivalents': equivalents
     })
 
+# -----------------------------
+# Chạy server
+# -----------------------------
 import os
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
